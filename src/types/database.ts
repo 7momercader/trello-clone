@@ -80,3 +80,8 @@ export type CardInsert = {
   due_date?: string | null
   created_by: string
 }
+
+// Tipo combinado: lista con sus tarjetas adentro
+export interface ListWithCards extends List {
+  cards: Card[]
+}

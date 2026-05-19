@@ -38,6 +38,10 @@ export default function WorkspaceDetail() {
     setDeletingId(null)
   }
 
+  const handleOpenBoard = (boardId: string) => {
+    navigate(`/board/${boardId}`)
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       <header className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
@@ -119,6 +123,7 @@ export default function WorkspaceDetail() {
               {boards.map((board) => (
                 <div
                   key={board.id}
+                  onClick={() => handleOpenBoard(board.id)}
                   className="relative rounded-lg p-5 h-32 cursor-pointer hover:opacity-90 transition group shadow-lg"
                   style={{ backgroundColor: board.background_color }}
                 >
