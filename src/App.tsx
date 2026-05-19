@@ -2,13 +2,14 @@ import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import { BoardsProvider } from './context/BoardsContext'
 import { BoardDetailProvider } from './context/BoardDetailContext'
+import { MembersProvider } from './context/MembersContext'
 import Login from './pages/Login'
 import SignUp from './pages/SignUp'
 import Dashboard from './pages/Dashboard'
 import WorkspaceDetail from './pages/WorkspaceDetail'
 import BoardDetail from './pages/BoardDetail'
 
-// Puente: lee workspaceId de la URL y lo pasa a BoardsProvider
+// Puente: lee workspaceId de la URL y lo pasa a BoardsProvider + MembersProvider
 function WorkspaceRoute() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
 
@@ -17,9 +18,11 @@ function WorkspaceRoute() {
   }
 
   return (
-    <BoardsProvider workspaceId={workspaceId}>
-      <WorkspaceDetail />
-    </BoardsProvider>
+    <MembersProvider>
+      <BoardsProvider workspaceId={workspaceId}>
+        <WorkspaceDetail />
+      </BoardsProvider>
+    </MembersProvider>
   )
 }
 

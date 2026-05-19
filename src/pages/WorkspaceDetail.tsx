@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useWorkspaces } from '../context/WorkspacesContext'
 import { useBoards } from '../context/BoardsContext'
 import CreateBoardModal from '../components/CreateBoardModal'
+import ManageMembersModal from '../components/ManageMembersModal'
 
 export default function WorkspaceDetail() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
@@ -12,6 +13,7 @@ export default function WorkspaceDetail() {
   const { workspaces, loading: workspacesLoading } = useWorkspaces()
   const { boards, loading, error, deleteBoard } = useBoards()
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isMembersModalOpen, setIsMembersModalOpen] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Buscar el workspace actual para mostrar su nombre
@@ -79,12 +81,20 @@ export default function WorkspaceDetail() {
                 <p className="text-slate-400">{currentWorkspace.description}</p>
               )}
             </div>
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md font-medium transition"
-            >
-              + Nuevo Tablero
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsMembersModalOpen(true)}
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-md font-medium transition flex items-center gap-2"
+              >
+                👥 Miembros
+              </button>
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-md font-medium transition"
+              >
+                + Nuevo Tablero
+              </button>
+            </div>
           </div>
 
           {/* Estados */}
@@ -159,6 +169,15 @@ export default function WorkspaceDetail() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       />
+
+      {workspaceId && currentWorkspace && (
+        <ManageMembersModal
+          workspaceId={workspaceId}
+          workspaceName={currentWorkspace.name}
+          isOpen={isMembersModalOpen}
+          onClose={() => setIsMembersModalOpen(false)}
+        />
+      )}
     </div>
   )
 }

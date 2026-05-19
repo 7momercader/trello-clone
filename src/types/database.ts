@@ -20,6 +20,24 @@ export interface WorkspaceMember {
   created_at: string
 }
 
+// Miembro con email incluido (lo devuelve la función RPC get_workspace_members)
+export interface WorkspaceMemberWithEmail {
+  member_id: string
+  user_id: string
+  email: string
+  role: WorkspaceRole
+  joined_at: string
+}
+
+// Respuesta estándar de las funciones RPC de miembros (add/remove)
+export interface MemberActionResult {
+  success: boolean
+  message: string
+  member_id?: string
+  user_id?: string
+  role?: WorkspaceRole
+}
+
 export interface Board {
   id: string
   workspace_id: string
