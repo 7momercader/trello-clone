@@ -25,6 +25,11 @@ interface BoardDetailContextType {
     updates: { title?: string; description?: string | null; due_date?: string | null }
   ) => Promise<{ data?: Card; error: Error | null }>
   deleteCard: (cardId: string) => Promise<{ error: Error | null }>
+  moveCard: (
+    cardId: string,
+    newListId: string,
+    newPosition: number
+  ) => Promise<{ error: Error | null }>
   refetch: () => Promise<void>
 }
 
@@ -52,7 +57,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     setError(null)
     setLoading(true)
 
-    // Traer lists
     const { data: listsData, error: listsError } = await supabase
       .from('lists')
       .select('*')
@@ -66,7 +70,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
       return
     }
 
-    // Traer todas las cards de esas lists en UNA sola query
     const listIds = (listsData ?? []).map((l) => l.id)
     let cardsData: Card[] = []
 
@@ -87,7 +90,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
       cardsData = cards ?? []
     }
 
-    // Combinar: para cada lista, asignar sus cards
     const listsWithCards: ListWithCards[] = (listsData ?? []).map((list) => ({
       ...list,
       cards: cardsData.filter((c) => c.list_id === list.id),
@@ -112,13 +114,11 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     }
   }, [fetchLists])
 
-  // Crear una lista nueva
   const createList = async (name: string) => {
     if (!user) {
       return { error: new Error('Usuario no autenticado') }
     }
 
-    // La posición es el final de la lista actual
     const nextPosition = lists.length
 
     const { data, error: insertError } = await supabase
@@ -136,14 +136,12 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     }
 
     if (data) {
-      // Agregar la lista nueva al final con cards vacías
       setLists((prev) => [...prev, { ...data, cards: [] }])
     }
 
     return { data, error: null }
   }
 
-  // Borrar una lista
   const deleteList = async (listId: string) => {
     const { error: deleteError } = await supabase
       .from('lists')
@@ -158,13 +156,11 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     return { error: null }
   }
 
-  // Crear una tarjeta en una lista específica
   const createCard = async (listId: string, title: string) => {
     if (!user) {
       return { error: new Error('Usuario no autenticado') }
     }
 
-    // La posición es el final de las cards actuales de esa lista
     const targetList = lists.find((l) => l.id === listId)
     const nextPosition = targetList ? targetList.cards.length : 0
 
@@ -194,7 +190,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     return { data, error: null }
   }
 
-  // Actualizar una tarjeta (título, descripción, fecha)
   const updateCard = async (
     cardId: string,
     updates: { title?: string; description?: string | null; due_date?: string | null }
@@ -222,7 +217,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     return { data, error: null }
   }
 
-  // Borrar una tarjeta
   const deleteCard = async (cardId: string) => {
     const { error: deleteError } = await supabase
       .from('cards')
@@ -243,6 +237,70 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     return { error: null }
   }
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🆕 Mover una tarjeta a otra lista o reordenar dentro de la misma
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const moveCard = async (
+    cardId: string,
+    newListId: string,
+    newPosition: number
+  ) => {
+    // 1) Encontrar la card actual y la lista origen
+    let sourceCard: Card | undefined
+    let sourceListId: string | undefined
+
+    for (const list of lists) {
+      const found = list.cards.find((c) => c.id === cardId)
+      if (found) {
+        sourceCard = found
+        sourceListId = list.id
+        break
+      }
+    }
+
+    if (!sourceCard || !sourceListId) {
+      return { error: new Error('Tarjeta no encontrada') }
+    }
+
+    // 2) Actualizar el estado local INMEDIATAMENTE (optimistic update)
+    setLists((prev) => {
+      // Sacar la card de la lista origen
+      const withoutCard = prev.map((l) =>
+        l.id === sourceListId
+          ? { ...l, cards: l.cards.filter((c) => c.id !== cardId) }
+          : l
+      )
+
+      // Insertar la card en la lista destino en la posición indicada
+      return withoutCard.map((l) => {
+        if (l.id !== newListId) return l
+
+        const updatedCard = { ...sourceCard!, list_id: newListId, position: newPosition }
+        const newCards = [...l.cards]
+        newCards.splice(newPosition, 0, updatedCard)
+
+        // Recalcular posiciones para que sean 0, 1, 2, 3...
+        const reorderedCards = newCards.map((c, idx) => ({ ...c, position: idx }))
+
+        return { ...l, cards: reorderedCards }
+      })
+    })
+
+    // 3) Persistir el cambio en Supabase
+    const { error: updateError } = await supabase
+      .from('cards')
+      .update({ list_id: newListId, position: newPosition })
+      .eq('id', cardId)
+
+    if (updateError) {
+      // Si falla, recargar todo para volver al estado real
+      await fetchLists()
+      return { error: new Error(updateError.message) }
+    }
+
+    return { error: null }
+  }
+
   return (
     <BoardDetailContext.Provider
       value={{
@@ -254,6 +312,7 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
         createCard,
         updateCard,
         deleteCard,
+        moveCard,
         refetch: fetchLists,
       }}
     >

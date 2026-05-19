@@ -3,6 +3,11 @@ import { useBoardDetail } from '../context/BoardDetailContext'
 import type { ListWithCards } from '../types/database'
 import CardItem from './CardItem'
 import AddCardForm from './AddCardForm'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { useDroppable } from '@dnd-kit/core'
 
 interface Props {
   list: ListWithCards
@@ -13,6 +18,15 @@ export default function ListColumn({ list }: Props) {
   const [isAddingCard, setIsAddingCard] = useState(false)
   const [deleting, setDeleting] = useState(false)
 
+  // 🆕 Hacer la lista entera "droppable" — para poder soltar cards
+  // incluso si la lista está vacía
+  const { setNodeRef } = useDroppable({
+    id: list.id,
+    data: {
+      type: 'list',
+    },
+  })
+
   const handleDeleteList = async () => {
     const confirmed = window.confirm(
       `¿Seguro que querés eliminar la lista "${list.name}" y todas sus tarjetas? Esta acción no se puede deshacer.`
@@ -21,7 +35,6 @@ export default function ListColumn({ list }: Props) {
 
     setDeleting(true)
     await deleteList(list.id)
-    // No reseteamos deleting porque el componente se desmonta al borrarse
   }
 
   return (
@@ -41,11 +54,19 @@ export default function ListColumn({ list }: Props) {
         </button>
       </div>
 
-      {/* Cards (scrolleable si hay muchas) */}
-      <div className="flex-1 overflow-y-auto px-2 py-1 space-y-2">
-        {list.cards.map((card) => (
-          <CardItem key={card.id} card={card} />
-        ))}
+      {/* 🆕 Cards (sortables y droppables) */}
+      <div
+        ref={setNodeRef}
+        className="flex-1 overflow-y-auto px-2 py-1 space-y-2 min-h-[40px]"
+      >
+        <SortableContext
+          items={list.cards.map((c) => c.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {list.cards.map((card) => (
+            <CardItem key={card.id} card={card} />
+          ))}
+        </SortableContext>
       </div>
 
       {/* Botón / formulario para agregar tarjeta */}

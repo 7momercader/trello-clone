@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useBoardDetail } from '../context/BoardDetailContext'
 import type { Card } from '../types/database'
 import EditCardModal from './EditCardModal'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 interface Props {
   card: Card
@@ -11,6 +13,29 @@ export default function CardItem({ card }: Props) {
   const { deleteCard } = useBoardDetail()
   const [isEditing, setIsEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+
+  // 🆕 Hook de @dnd-kit que hace que la card sea arrastrable
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: card.id,
+    data: {
+      type: 'card',
+      listId: card.list_id,
+    },
+  })
+
+  // 🆕 Estilos dinámicos: aplicar la transformación que calcula @dnd-kit
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -23,7 +48,6 @@ export default function CardItem({ card }: Props) {
     await deleteCard(card.id)
   }
 
-  // Formatear fecha de vencimiento si existe
   const dueDateFormatted = card.due_date
     ? new Date(card.due_date).toLocaleDateString('es-AR', {
         day: '2-digit',
@@ -31,7 +55,6 @@ export default function CardItem({ card }: Props) {
       })
     : null
 
-  // Detectar si la fecha está vencida (en el pasado)
   const isOverdue = card.due_date
     ? new Date(card.due_date) < new Date()
     : false
@@ -39,8 +62,12 @@ export default function CardItem({ card }: Props) {
   return (
     <>
       <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
         onClick={() => setIsEditing(true)}
-        className="bg-white rounded-md shadow-sm p-2.5 cursor-pointer hover:shadow-md hover:ring-2 hover:ring-blue-400 transition group"
+        className="bg-white rounded-md shadow-sm p-2.5 cursor-grab active:cursor-grabbing hover:shadow-md hover:ring-2 hover:ring-blue-400 transition group"
       >
         <div className="flex justify-between items-start gap-2">
           <p className="text-sm text-slate-800 flex-1 break-words">
@@ -49,6 +76,7 @@ export default function CardItem({ card }: Props) {
           <button
             onClick={handleDelete}
             disabled={deleting}
+            onPointerDown={(e) => e.stopPropagation()}
             className="text-slate-400 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition disabled:opacity-50 flex-shrink-0"
             title="Eliminar tarjeta"
           >
@@ -79,7 +107,6 @@ export default function CardItem({ card }: Props) {
         )}
       </div>
 
-      {/* Modal de edición */}
       {isEditing && (
         <EditCardModal
           card={card}
