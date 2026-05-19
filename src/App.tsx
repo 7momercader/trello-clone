@@ -1,8 +1,25 @@
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { BoardsProvider } from './context/BoardsContext'
 import Login from './pages/Login'
 import SignUp from './pages/SignUp'
 import Dashboard from './pages/Dashboard'
+import WorkspaceDetail from './pages/WorkspaceDetail'
+
+// Componente puente: lee el workspaceId de la URL y lo pasa al BoardsProvider
+function WorkspaceRoute() {
+  const { workspaceId } = useParams<{ workspaceId: string }>()
+
+  if (!workspaceId) {
+    return <Navigate to="/dashboard" replace />
+  }
+
+  return (
+    <BoardsProvider workspaceId={workspaceId}>
+      <WorkspaceDetail />
+    </BoardsProvider>
+  )
+}
 
 function App() {
   const { user, loading } = useAuth()
@@ -31,6 +48,10 @@ function App() {
       <Route
         path="/dashboard"
         element={user ? <Dashboard /> : <Navigate to="/login" replace />}
+      />
+      <Route
+        path="/workspace/:workspaceId"
+        element={user ? <WorkspaceRoute /> : <Navigate to="/login" replace />}
       />
 
       {/* Ruta por defecto */}

@@ -27,6 +27,10 @@ export default function Dashboard() {
     setDeletingId(null)
   }
 
+  const handleOpenWorkspace = (workspaceId: string) => {
+    navigate(`/workspace/${workspaceId}`)
+  }
+
   return (
     <div className="min-h-screen bg-slate-900 text-white">
       <header className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex justify-between items-center">
@@ -93,14 +97,18 @@ export default function Dashboard() {
               {workspaces.map((workspace) => (
                 <div
                   key={workspace.id}
-                  className="bg-slate-800 border border-slate-700 rounded-lg p-5 hover:border-blue-500 transition group"
+                  onClick={() => handleOpenWorkspace(workspace.id)}
+                  className="bg-slate-800 border border-slate-700 rounded-lg p-5 hover:border-blue-500 transition group cursor-pointer"
                 >
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="text-lg font-bold text-white">
                       {workspace.name}
                     </h3>
                     <button
-                      onClick={() => handleDelete(workspace.id, workspace.name)}
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleDelete(workspace.id, workspace.name)
+                      }}
                       disabled={deletingId === workspace.id}
                       className="text-slate-500 hover:text-red-400 text-sm opacity-0 group-hover:opacity-100 transition disabled:opacity-50"
                       title="Eliminar workspace"
