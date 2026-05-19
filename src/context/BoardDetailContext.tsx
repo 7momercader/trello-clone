@@ -55,7 +55,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     }
 
     setError(null)
-    setLoading(true)
 
     const { data: listsData, error: listsError } = await supabase
       .from('lists')
@@ -99,11 +98,13 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     setLoading(false)
   }, [user, boardId])
 
+  // Carga inicial
   useEffect(() => {
     let cancelled = false
 
     const load = async () => {
       if (cancelled) return
+      setLoading(true)
       await fetchLists()
     }
 
@@ -113,6 +114,52 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
       cancelled = true
     }
   }, [fetchLists])
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // 🆕 SUSCRIPCIÓN REALTIME
+  // Escucha cambios en lists y cards y refresca los datos
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  useEffect(() => {
+    if (!boardId || !user) return
+
+    // Crear canal de suscripción
+    const channel = supabase
+      .channel(`board:${boardId}`)
+      // Escuchar cambios en lists del board actual
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'lists',
+          filter: `board_id=eq.${boardId}`,
+        },
+        () => {
+          // Cuando hay un cambio, recargamos las listas
+          fetchLists()
+        }
+      )
+      // Escuchar cambios en cards
+      // (no podemos filtrar por board_id porque cards no tiene esa columna,
+      // pero como recargamos todo, igual se refleja solo lo del board actual)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'cards',
+        },
+        () => {
+          fetchLists()
+        }
+      )
+      .subscribe()
+
+    // Cleanup: desuscribirse cuando el componente se desmonta o cambia boardId
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [boardId, user, fetchLists])
 
   const createList = async (name: string) => {
     if (!user) {
@@ -237,15 +284,11 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     return { error: null }
   }
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🆕 Mover una tarjeta a otra lista o reordenar dentro de la misma
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   const moveCard = async (
     cardId: string,
     newListId: string,
     newPosition: number
   ) => {
-    // 1) Encontrar la card actual y la lista origen
     let sourceCard: Card | undefined
     let sourceListId: string | undefined
 
@@ -262,16 +305,13 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
       return { error: new Error('Tarjeta no encontrada') }
     }
 
-    // 2) Actualizar el estado local INMEDIATAMENTE (optimistic update)
     setLists((prev) => {
-      // Sacar la card de la lista origen
       const withoutCard = prev.map((l) =>
         l.id === sourceListId
           ? { ...l, cards: l.cards.filter((c) => c.id !== cardId) }
           : l
       )
 
-      // Insertar la card en la lista destino en la posición indicada
       return withoutCard.map((l) => {
         if (l.id !== newListId) return l
 
@@ -279,21 +319,18 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
         const newCards = [...l.cards]
         newCards.splice(newPosition, 0, updatedCard)
 
-        // Recalcular posiciones para que sean 0, 1, 2, 3...
         const reorderedCards = newCards.map((c, idx) => ({ ...c, position: idx }))
 
         return { ...l, cards: reorderedCards }
       })
     })
 
-    // 3) Persistir el cambio en Supabase
     const { error: updateError } = await supabase
       .from('cards')
       .update({ list_id: newListId, position: newPosition })
       .eq('id', cardId)
 
     if (updateError) {
-      // Si falla, recargar todo para volver al estado real
       await fetchLists()
       return { error: new Error(updateError.message) }
     }
