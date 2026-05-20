@@ -56,7 +56,7 @@ export default function BoardDetail() {
     }
   }, [boardId])
 
-  // 🆕 Sensores de drag: necesitamos mover al menos 8px para activar el drag
+  // Sensores de drag: necesitamos mover al menos 8px para activar el drag
   // (evita que un click simple en una tarjeta se confunda con un drag)
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -66,12 +66,10 @@ export default function BoardDetail() {
     })
   )
 
-  // 🆕 Manejador principal: se ejecuta cuando soltás una tarjeta
+  // Manejador principal: se ejecuta cuando soltás una tarjeta
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
 
-    // active = lo que estabas arrastrando
-    // over = sobre lo que lo soltaste (puede ser una card u otra lista)
     if (!over) return
 
     const activeId = String(active.id)
@@ -79,7 +77,6 @@ export default function BoardDetail() {
 
     if (activeId === overId) return
 
-    // Encontrar la card activa (la que se arrastró)
     let sourceListId: string | undefined
     for (const list of lists) {
       if (list.cards.some((c) => c.id === activeId)) {
@@ -90,22 +87,16 @@ export default function BoardDetail() {
 
     if (!sourceListId) return
 
-    // Determinar la lista destino y la nueva posición
-    // Caso 1: soltaste sobre otra card → la lista destino es la lista de esa card
-    // Caso 2: soltaste sobre una lista vacía → over.id es el id de la lista
     let targetListId: string | undefined
     let newPosition = 0
 
-    // ¿over es una lista directamente (drop en área vacía)?
     const overIsList = lists.some((l) => l.id === overId)
 
     if (overIsList) {
       targetListId = overId
-      // Si la lista está vacía, posición 0
       const targetList = lists.find((l) => l.id === targetListId)
       newPosition = targetList?.cards.length ?? 0
     } else {
-      // over es una card → encontrar su lista y posición
       for (const list of lists) {
         const cardIndex = list.cards.findIndex((c) => c.id === overId)
         if (cardIndex !== -1) {
@@ -118,7 +109,6 @@ export default function BoardDetail() {
 
     if (!targetListId) return
 
-    // Llamar al Context para hacer el cambio
     moveCard(activeId, targetListId, newPosition)
   }
 
@@ -138,31 +128,39 @@ export default function BoardDetail() {
       className="min-h-screen flex flex-col"
       style={{ backgroundColor: bgColor }}
     >
-      {/* Header */}
-      <header className="bg-black/30 backdrop-blur-sm border-b border-white/10 px-6 py-3 flex justify-between items-center">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() =>
-              board
-                ? navigate(`/workspace/${board.workspace_id}`)
-                : navigate('/dashboard')
-            }
-            className="text-white/80 hover:text-white text-sm transition"
-          >
-            ← Volver
-          </button>
-          <h1 className="text-xl font-bold text-white drop-shadow">
-            {board?.name ?? 'Cargando...'}
-          </h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-white/80">{user?.email}</span>
-          <button
-            onClick={handleLogout}
-            className="px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-md text-sm text-white transition"
-          >
-            Cerrar sesión
-          </button>
+      {/* Header — compacto en mobile, espaciado en desktop */}
+      <header className="bg-black/30 backdrop-blur-sm border-b border-white/10 px-3 sm:px-6 py-2 sm:py-3">
+        {/* Fila 1: Volver + Título */}
+        <div className="flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+            <button
+              onClick={() =>
+                board
+                  ? navigate(`/workspace/${board.workspace_id}`)
+                  : navigate('/dashboard')
+              }
+              className="text-white/80 hover:text-white text-sm transition flex-shrink-0"
+              title="Volver"
+            >
+              ← <span className="hidden sm:inline">Volver</span>
+            </button>
+            <h1 className="text-base sm:text-xl font-bold text-white drop-shadow truncate">
+              {board?.name ?? 'Cargando...'}
+            </h1>
+          </div>
+
+          {/* Acciones derechas: email (solo desktop) + cerrar sesión */}
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+            <span className="hidden md:inline text-sm text-white/80 truncate max-w-[180px]">
+              {user?.email}
+            </span>
+            <button
+              onClick={handleLogout}
+              className="px-2 sm:px-3 py-1 sm:py-1.5 bg-white/10 hover:bg-white/20 rounded-md text-xs sm:text-sm text-white transition whitespace-nowrap"
+            >
+              Cerrar sesión
+            </button>
+          </div>
         </div>
       </header>
 
@@ -186,8 +184,8 @@ export default function BoardDetail() {
           collisionDetection={closestCorners}
           onDragEnd={handleDragEnd}
         >
-          <main className="flex-1 overflow-x-auto overflow-y-hidden p-6">
-            <div className="flex gap-4 items-start h-full">
+          <main className="flex-1 overflow-x-auto overflow-y-hidden p-3 sm:p-6">
+            <div className="flex gap-3 sm:gap-4 items-start h-full">
               {lists.map((list) => (
                 <ListColumn key={list.id} list={list} />
               ))}
