@@ -14,15 +14,17 @@ import type {
   ListWithCards,
   CardAssignmentWithEmail,
   AssignmentActionResult,
+  CommentWithAuthor,
+  CommentActionResult,
 } from '../types/database'
 
 interface BoardDetailContextType {
   lists: ListWithCards[]
   loading: boolean
   error: string | null
-  // 🆕 workspaceId al que pertenece el board actual (para cargar members)
   boardWorkspaceId: string | null
   assignmentsByCardId: Record<string, CardAssignmentWithEmail[]>
+  commentsByCardId: Record<string, CommentWithAuthor[]>
   createList: (name: string) => Promise<{ data?: List; error: Error | null }>
   deleteList: (listId: string) => Promise<{ error: Error | null }>
   createCard: (
@@ -42,6 +44,9 @@ interface BoardDetailContextType {
   fetchCardAssignments: (cardId: string) => Promise<void>
   assignMemberToCard: (cardId: string, userId: string) => Promise<AssignmentActionResult>
   unassignMemberFromCard: (cardId: string, userId: string) => Promise<AssignmentActionResult>
+  fetchCardComments: (cardId: string) => Promise<void>
+  addCardComment: (cardId: string, content: string) => Promise<CommentActionResult>
+  deleteCardComment: (cardId: string, commentId: string) => Promise<CommentActionResult>
   refetch: () => Promise<void>
 }
 
@@ -59,11 +64,13 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
   const [error, setError] = useState<string | null>(null)
   const [boardWorkspaceId, setBoardWorkspaceId] = useState<string | null>(null)
   const [assignmentsByCardId, setAssignmentsByCardId] = useState<Record<string, CardAssignmentWithEmail[]>>({})
+  const [commentsByCardId, setCommentsByCardId] = useState<Record<string, CommentWithAuthor[]>>({})
 
   const fetchLists = useCallback(async () => {
     if (!user || !boardId) {
       setLists([])
       setAssignmentsByCardId({})
+      setCommentsByCardId({})
       setBoardWorkspaceId(null)
       setLoading(false)
       return
@@ -71,7 +78,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
 
     setError(null)
 
-    // Traer el workspace_id del board para que componentes consumidores puedan usarlo
     const { data: boardData, error: boardError } = await supabase
       .from('boards')
       .select('workspace_id')
@@ -176,6 +182,7 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     }
   }, [fetchLists])
 
+  // Realtime: lists, cards, card_assignments, comments
   useEffect(() => {
     if (!boardId || !user) return
 
@@ -204,6 +211,7 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
           fetchLists()
         }
       )
+
       .on(
         'postgres_changes',
         {
@@ -213,6 +221,18 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
         },
         () => {
           fetchLists()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'comments',
+        },
+        () => {
+          // Realtime: detectamos cambios pero no hacemos nada acá.
+          // El EditCardModal vuelve a fetchear sus propios comments al abrirse.
         }
       )
       .subscribe()
@@ -348,6 +368,12 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
       return copy
     })
 
+    setCommentsByCardId((prev) => {
+      const copy = { ...prev }
+      delete copy[cardId]
+      return copy
+    })
+
     return { error: null }
   }
 
@@ -404,6 +430,10 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
 
     return { error: null }
   }
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Asignaciones de miembros a cards
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   const fetchCardAssignments = useCallback(async (cardId: string) => {
     if (!cardId) return
@@ -476,6 +506,80 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     [fetchCardAssignments]
   )
 
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Comentarios en cards
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  const fetchCardComments = useCallback(async (cardId: string) => {
+    if (!cardId) return
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc('get_card_comments', {
+        target_card_id: cardId,
+      })
+
+      if (rpcError) throw rpcError
+
+      setCommentsByCardId((prev) => ({
+        ...prev,
+        [cardId]: (data ?? []) as CommentWithAuthor[],
+      }))
+    } catch (err) {
+      console.error('fetchCardComments error:', err)
+    }
+  }, [])
+
+  const addCardComment = useCallback(
+    async (cardId: string, content: string): Promise<CommentActionResult> => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc('add_card_comment', {
+          target_card_id: cardId,
+          comment_content: content,
+        })
+
+        if (rpcError) throw rpcError
+
+        const result = data as CommentActionResult
+
+        if (result.success) {
+          await fetchCardComments(cardId)
+        }
+
+        return result
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al agregar comentario'
+        console.error('addCardComment error:', err)
+        return { success: false, message }
+      }
+    },
+    [fetchCardComments]
+  )
+
+  const deleteCardComment = useCallback(
+    async (cardId: string, commentId: string): Promise<CommentActionResult> => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc('delete_card_comment', {
+          target_comment_id: commentId,
+        })
+
+        if (rpcError) throw rpcError
+
+        const result = data as CommentActionResult
+
+        if (result.success) {
+          await fetchCardComments(cardId)
+        }
+
+        return result
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al eliminar comentario'
+        console.error('deleteCardComment error:', err)
+        return { success: false, message }
+      }
+    },
+    [fetchCardComments]
+  )
+
   return (
     <BoardDetailContext.Provider
       value={{
@@ -484,6 +588,7 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
         error,
         boardWorkspaceId,
         assignmentsByCardId,
+        commentsByCardId,
         createList,
         deleteList,
         createCard,
@@ -493,6 +598,9 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
         fetchCardAssignments,
         assignMemberToCard,
         unassignMemberFromCard,
+        fetchCardComments,
+        addCardComment,
+        deleteCardComment,
         refetch: fetchLists,
       }}
     >

@@ -73,7 +73,6 @@ export interface Card {
 // Card Assignments (asignación de miembros a tarjetas)
 // ============================================
 
-// Fila base de card_assignments
 export interface CardAssignment {
   id: string
   card_id: string
@@ -82,7 +81,6 @@ export interface CardAssignment {
   assigned_at: string
 }
 
-// Asignado con email y rol incluidos (lo devuelve la RPC get_card_assignments)
 export interface CardAssignmentWithEmail {
   assignment_id: string
   user_id: string
@@ -91,11 +89,42 @@ export interface CardAssignmentWithEmail {
   assigned_at: string
 }
 
-// Respuesta estándar de las RPC assign/unassign
 export interface AssignmentActionResult {
   success: boolean
   message: string
   assignment_id?: string
+}
+
+// ============================================
+// Comments (comentarios en tarjetas)
+// ============================================
+
+// Fila base de la tabla comments
+export interface Comment {
+  id: string
+  card_id: string
+  user_id: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+// Comentario con email/rol del autor (lo devuelve get_card_comments)
+export interface CommentWithAuthor {
+  comment_id: string
+  user_id: string
+  email: string
+  role: WorkspaceRole
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+// Respuesta estándar de las RPC add/delete comment
+export interface CommentActionResult {
+  success: boolean
+  message: string
+  comment_id?: string
 }
 
 // Tipos para inserts (sin id, created_at, updated_at — los pone la DB)
