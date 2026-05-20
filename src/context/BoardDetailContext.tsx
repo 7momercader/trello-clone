@@ -8,12 +8,21 @@ import {
 } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
-import type { List, Card, ListWithCards } from '../types/database'
+import type {
+  List,
+  Card,
+  ListWithCards,
+  CardAssignmentWithEmail,
+  AssignmentActionResult,
+} from '../types/database'
 
 interface BoardDetailContextType {
   lists: ListWithCards[]
   loading: boolean
   error: string | null
+  // 🆕 workspaceId al que pertenece el board actual (para cargar members)
+  boardWorkspaceId: string | null
+  assignmentsByCardId: Record<string, CardAssignmentWithEmail[]>
   createList: (name: string) => Promise<{ data?: List; error: Error | null }>
   deleteList: (listId: string) => Promise<{ error: Error | null }>
   createCard: (
@@ -30,6 +39,9 @@ interface BoardDetailContextType {
     newListId: string,
     newPosition: number
   ) => Promise<{ error: Error | null }>
+  fetchCardAssignments: (cardId: string) => Promise<void>
+  assignMemberToCard: (cardId: string, userId: string) => Promise<AssignmentActionResult>
+  unassignMemberFromCard: (cardId: string, userId: string) => Promise<AssignmentActionResult>
   refetch: () => Promise<void>
 }
 
@@ -43,18 +55,34 @@ interface BoardDetailProviderProps {
 export function BoardDetailProvider({ children, boardId }: BoardDetailProviderProps) {
   const { user } = useAuth()
   const [lists, setLists] = useState<ListWithCards[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
+  const [boardWorkspaceId, setBoardWorkspaceId] = useState<string | null>(null)
+  const [assignmentsByCardId, setAssignmentsByCardId] = useState<Record<string, CardAssignmentWithEmail[]>>({})
 
-  // Cargar lists con sus cards desde Supabase
   const fetchLists = useCallback(async () => {
     if (!user || !boardId) {
       setLists([])
+      setAssignmentsByCardId({})
+      setBoardWorkspaceId(null)
       setLoading(false)
       return
     }
 
     setError(null)
+
+    // Traer el workspace_id del board para que componentes consumidores puedan usarlo
+    const { data: boardData, error: boardError } = await supabase
+      .from('boards')
+      .select('workspace_id')
+      .eq('id', boardId)
+      .single()
+
+    if (boardError) {
+      console.error('Error al traer board:', boardError.message)
+    } else if (boardData) {
+      setBoardWorkspaceId(boardData.workspace_id)
+    }
 
     const { data: listsData, error: listsError } = await supabase
       .from('lists')
@@ -95,10 +123,43 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     }))
 
     setLists(listsWithCards)
+
+    if (cardsData.length > 0) {
+      const cardIds = cardsData.map((c) => c.id)
+      const { data: rawAssignments, error: assignErr } = await supabase
+        .from('card_assignments')
+        .select('id, card_id, user_id, assigned_at')
+        .in('card_id', cardIds)
+
+      if (assignErr) {
+        console.error('Error cargando asignaciones:', assignErr.message)
+        setAssignmentsByCardId({})
+      } else if (rawAssignments && rawAssignments.length > 0) {
+        const cardsWithAssignments = Array.from(new Set(rawAssignments.map((a) => a.card_id)))
+        const newMap: Record<string, CardAssignmentWithEmail[]> = {}
+
+        await Promise.all(
+          cardsWithAssignments.map(async (cid) => {
+            const { data, error: rpcErr } = await supabase.rpc('get_card_assignments', {
+              target_card_id: cid,
+            })
+            if (!rpcErr && data) {
+              newMap[cid] = data as CardAssignmentWithEmail[]
+            }
+          })
+        )
+
+        setAssignmentsByCardId(newMap)
+      } else {
+        setAssignmentsByCardId({})
+      }
+    } else {
+      setAssignmentsByCardId({})
+    }
+
     setLoading(false)
   }, [user, boardId])
 
-  // Carga inicial
   useEffect(() => {
     let cancelled = false
 
@@ -115,17 +176,11 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     }
   }, [fetchLists])
 
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  // 🆕 SUSCRIPCIÓN REALTIME
-  // Escucha cambios en lists y cards y refresca los datos
-  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   useEffect(() => {
     if (!boardId || !user) return
 
-    // Crear canal de suscripción
     const channel = supabase
       .channel(`board:${boardId}`)
-      // Escuchar cambios en lists del board actual
       .on(
         'postgres_changes',
         {
@@ -135,13 +190,9 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
           filter: `board_id=eq.${boardId}`,
         },
         () => {
-          // Cuando hay un cambio, recargamos las listas
           fetchLists()
         }
       )
-      // Escuchar cambios en cards
-      // (no podemos filtrar por board_id porque cards no tiene esa columna,
-      // pero como recargamos todo, igual se refleja solo lo del board actual)
       .on(
         'postgres_changes',
         {
@@ -153,9 +204,19 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
           fetchLists()
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'card_assignments',
+        },
+        () => {
+          fetchLists()
+        }
+      )
       .subscribe()
 
-    // Cleanup: desuscribirse cuando el componente se desmonta o cambia boardId
     return () => {
       supabase.removeChannel(channel)
     }
@@ -281,6 +342,12 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
       }))
     )
 
+    setAssignmentsByCardId((prev) => {
+      const copy = { ...prev }
+      delete copy[cardId]
+      return copy
+    })
+
     return { error: null }
   }
 
@@ -338,18 +405,94 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     return { error: null }
   }
 
+  const fetchCardAssignments = useCallback(async (cardId: string) => {
+    if (!cardId) return
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc('get_card_assignments', {
+        target_card_id: cardId,
+      })
+
+      if (rpcError) throw rpcError
+
+      setAssignmentsByCardId((prev) => ({
+        ...prev,
+        [cardId]: (data ?? []) as CardAssignmentWithEmail[],
+      }))
+    } catch (err) {
+      console.error('fetchCardAssignments error:', err)
+    }
+  }, [])
+
+  const assignMemberToCard = useCallback(
+    async (cardId: string, userId: string): Promise<AssignmentActionResult> => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc('assign_member_to_card', {
+          target_card_id: cardId,
+          target_user_id: userId,
+        })
+
+        if (rpcError) throw rpcError
+
+        const result = data as AssignmentActionResult
+
+        if (result.success) {
+          await fetchCardAssignments(cardId)
+        }
+
+        return result
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al asignar miembro'
+        console.error('assignMemberToCard error:', err)
+        return { success: false, message }
+      }
+    },
+    [fetchCardAssignments]
+  )
+
+  const unassignMemberFromCard = useCallback(
+    async (cardId: string, userId: string): Promise<AssignmentActionResult> => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc('unassign_member_from_card', {
+          target_card_id: cardId,
+          target_user_id: userId,
+        })
+
+        if (rpcError) throw rpcError
+
+        const result = data as AssignmentActionResult
+
+        if (result.success) {
+          await fetchCardAssignments(cardId)
+        }
+
+        return result
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al desasignar miembro'
+        console.error('unassignMemberFromCard error:', err)
+        return { success: false, message }
+      }
+    },
+    [fetchCardAssignments]
+  )
+
   return (
     <BoardDetailContext.Provider
       value={{
         lists,
         loading,
         error,
+        boardWorkspaceId,
+        assignmentsByCardId,
         createList,
         deleteList,
         createCard,
         updateCard,
         deleteCard,
         moveCard,
+        fetchCardAssignments,
+        assignMemberToCard,
+        unassignMemberFromCard,
         refetch: fetchLists,
       }}
     >
@@ -358,6 +501,7 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useBoardDetail() {
   const context = useContext(BoardDetailContext)
   if (context === undefined) {

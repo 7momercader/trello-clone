@@ -69,6 +69,35 @@ export interface Card {
   updated_at: string
 }
 
+// ============================================
+// Card Assignments (asignación de miembros a tarjetas)
+// ============================================
+
+// Fila base de card_assignments
+export interface CardAssignment {
+  id: string
+  card_id: string
+  user_id: string
+  assigned_by: string | null
+  assigned_at: string
+}
+
+// Asignado con email y rol incluidos (lo devuelve la RPC get_card_assignments)
+export interface CardAssignmentWithEmail {
+  assignment_id: string
+  user_id: string
+  email: string
+  role: WorkspaceRole
+  assigned_at: string
+}
+
+// Respuesta estándar de las RPC assign/unassign
+export interface AssignmentActionResult {
+  success: boolean
+  message: string
+  assignment_id?: string
+}
+
 // Tipos para inserts (sin id, created_at, updated_at — los pone la DB)
 export type WorkspaceInsert = {
   name: string

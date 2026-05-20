@@ -7,55 +7,43 @@ import type {
   MemberActionResult,
 } from '../types/database'
 
-// ============================================
-// Tipo del valor que expone el Context
-// ============================================
 interface MembersContextValue {
   members: WorkspaceMemberWithEmail[]
   loading: boolean
   error: string | null
-  // Rol del usuario actual en este workspace (owner/admin/member o null si no es miembro)
   currentUserRole: WorkspaceRole | null
-  // Acciones
+  // workspaceId activo (último que se consultó)
+  activeWorkspaceId: string | null
+  setActiveWorkspaceId: (id: string | null) => void
   fetchMembers: (workspaceId: string) => Promise<void>
   addMember: (workspaceId: string, email: string, role: 'admin' | 'member') => Promise<MemberActionResult>
   removeMember: (workspaceId: string, userId: string) => Promise<MemberActionResult>
 }
 
-// ============================================
-// Crear el Context
-// ============================================
 const MembersContext = createContext<MembersContextValue | undefined>(undefined)
 
-// ============================================
-// Props del Provider
-// ============================================
 interface MembersProviderProps {
   children: ReactNode
 }
 
-// ============================================
-// Provider: envuelve componentes que necesitan acceso a members
-// ============================================
 export function MembersProvider({ children }: MembersProviderProps) {
   const { user } = useAuth()
   const [members, setMembers] = useState<WorkspaceMemberWithEmail[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
 
-  // Derivar el rol del usuario actual de la lista de miembros
+  // Rol del usuario actual en el workspace activo
   const currentUserRole: WorkspaceRole | null = user
     ? (members.find((m) => m.user_id === user.id)?.role ?? null)
     : null
 
-  // --------------------------------------------
-  // fetchMembers: trae los miembros de un workspace
-  // --------------------------------------------
   const fetchMembers = useCallback(async (workspaceId: string) => {
     if (!workspaceId) return
 
     setLoading(true)
     setError(null)
+    setActiveWorkspaceId(workspaceId)
 
     try {
       const { data, error: rpcError } = await supabase.rpc('get_workspace_members', {
@@ -75,9 +63,6 @@ export function MembersProvider({ children }: MembersProviderProps) {
     }
   }, [])
 
-  // --------------------------------------------
-  // addMember: agrega un miembro por email
-  // --------------------------------------------
   const addMember = useCallback(
     async (
       workspaceId: string,
@@ -95,7 +80,6 @@ export function MembersProvider({ children }: MembersProviderProps) {
 
         const result = data as MemberActionResult
 
-        // Si fue exitoso, refrescamos la lista
         if (result.success) {
           await fetchMembers(workspaceId)
         }
@@ -110,9 +94,6 @@ export function MembersProvider({ children }: MembersProviderProps) {
     [fetchMembers]
   )
 
-  // --------------------------------------------
-  // removeMember: elimina un miembro (o salir del workspace)
-  // --------------------------------------------
   const removeMember = useCallback(
     async (workspaceId: string, userId: string): Promise<MemberActionResult> => {
       try {
@@ -125,7 +106,6 @@ export function MembersProvider({ children }: MembersProviderProps) {
 
         const result = data as MemberActionResult
 
-        // Si fue exitoso, refrescamos la lista (a menos que el usuario se sacó a sí mismo)
         if (result.success && userId !== user?.id) {
           await fetchMembers(workspaceId)
         }
@@ -140,13 +120,12 @@ export function MembersProvider({ children }: MembersProviderProps) {
     [fetchMembers, user?.id]
   )
 
-  // --------------------------------------------
   // Limpiar miembros cuando el usuario hace logout
-  // --------------------------------------------
   useEffect(() => {
     if (!user) {
       setMembers([])
       setError(null)
+      setActiveWorkspaceId(null)
     }
   }, [user])
 
@@ -157,6 +136,8 @@ export function MembersProvider({ children }: MembersProviderProps) {
         loading,
         error,
         currentUserRole,
+        activeWorkspaceId,
+        setActiveWorkspaceId,
         fetchMembers,
         addMember,
         removeMember,
@@ -167,9 +148,6 @@ export function MembersProvider({ children }: MembersProviderProps) {
   )
 }
 
-// ============================================
-// Hook personalizado para consumir el Context
-// ============================================
 // eslint-disable-next-line react-refresh/only-export-components
 export function useMembers() {
   const context = useContext(MembersContext)

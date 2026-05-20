@@ -9,7 +9,7 @@ import Dashboard from './pages/Dashboard'
 import WorkspaceDetail from './pages/WorkspaceDetail'
 import BoardDetail from './pages/BoardDetail'
 
-// Puente: lee workspaceId de la URL y lo pasa a BoardsProvider + MembersProvider
+// Puente: lee workspaceId de la URL y lo pasa a BoardsProvider
 function WorkspaceRoute() {
   const { workspaceId } = useParams<{ workspaceId: string }>()
 
@@ -18,16 +18,13 @@ function WorkspaceRoute() {
   }
 
   return (
-    <MembersProvider>
-      <BoardsProvider workspaceId={workspaceId}>
-        <WorkspaceDetail />
-      </BoardsProvider>
-    </MembersProvider>
+    <BoardsProvider workspaceId={workspaceId}>
+      <WorkspaceDetail />
+    </BoardsProvider>
   )
 }
 
 // Puente: lee boardId de la URL y lo pasa a BoardDetailProvider
-// Necesita BoardsProvider arriba para mostrar el nombre del board
 function BoardRoute() {
   const { boardId } = useParams<{ boardId: string }>()
 
@@ -53,44 +50,30 @@ function App() {
     )
   }
 
-  return (
+  // Si el usuario está logueado, envolvemos todo con MembersProvider
+  // para que cualquier ruta protegida pueda acceder a la lista de miembros
+  const protectedRoutes = (
     <Routes>
-      {/* Rutas públicas */}
-      <Route
-        path="/login"
-        element={user ? <Navigate to="/dashboard" replace /> : <Login />}
-      />
-      <Route
-        path="/signup"
-        element={user ? <Navigate to="/dashboard" replace /> : <SignUp />}
-      />
-
-      {/* Rutas protegidas */}
-      <Route
-        path="/dashboard"
-        element={user ? <Dashboard /> : <Navigate to="/login" replace />}
-      />
-      <Route
-        path="/workspace/:workspaceId"
-        element={user ? <WorkspaceRoute /> : <Navigate to="/login" replace />}
-      />
-      <Route
-        path="/board/:boardId"
-        element={user ? <BoardRoute /> : <Navigate to="/login" replace />}
-      />
-
-      {/* Ruta por defecto */}
-      <Route
-        path="/"
-        element={<Navigate to={user ? '/dashboard' : '/login'} replace />}
-      />
-
-      {/* 404: cualquier otra ruta */}
-      <Route
-        path="*"
-        element={<Navigate to="/" replace />}
-      />
+      <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/workspace/:workspaceId" element={<WorkspaceRoute />} />
+      <Route path="/board/:boardId" element={<BoardRoute />} />
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
+  )
+
+  const publicRoutes = (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/signup" element={<SignUp />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
+    </Routes>
+  )
+
+  return user ? (
+    <MembersProvider>{protectedRoutes}</MembersProvider>
+  ) : (
+    publicRoutes
   )
 }
 
