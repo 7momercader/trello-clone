@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useBoardDetail } from '../context/BoardDetailContext'
-import type { Card } from '../types/database'
+import type { Card, WorkspaceRole } from '../types/database'
 import EditCardModal from './EditCardModal'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
@@ -27,13 +27,32 @@ function timeAgo(isoString: string): string {
   return date.toLocaleDateString('es-AR')
 }
 
+// Emoji según el rol del miembro
+function roleEmoji(role: WorkspaceRole): string {
+  if (role === 'owner') return '👑'
+  if (role === 'admin') return '🛡️'
+  return '👤'
+}
+
+// Acorta un email para mostrar como chip
+// "juan.perez@levanohome.pe" → "juan.perez"
+function shortEmail(email: string): string {
+  const atIndex = email.indexOf('@')
+  if (atIndex === -1) return email
+  const local = email.slice(0, atIndex)
+  if (local.length > 12) return local.slice(0, 11) + '…'
+  return local
+}
+
 export default function CardItem({ card }: Props) {
-  const { deleteCard, toggleCardCompleted } = useBoardDetail()
+  const { deleteCard, toggleCardCompleted, assignmentsByCardId } = useBoardDetail()
   const [isEditing, setIsEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [togglingCompleted, setTogglingCompleted] = useState(false)
 
-  // Hook de @dnd-kit que hace que la card sea arrastrable
+  // Asignaciones de esta card específica
+  const cardAssignments = assignmentsByCardId[card.id] ?? []
+
   const {
     attributes,
     listeners,
@@ -86,7 +105,6 @@ export default function CardItem({ card }: Props) {
     ? new Date(card.due_date) < new Date()
     : false
 
-  // Estilos condicionales según el estado de completado
   const cardBgClass = card.is_completed
     ? 'bg-emerald-50 ring-1 ring-emerald-300/40'
     : 'bg-white'
@@ -160,6 +178,26 @@ export default function CardItem({ card }: Props) {
             >
               📅 {dueDateFormatted}
             </span>
+          </div>
+        )}
+
+        {/* Chips de asignados */}
+        {cardAssignments.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {cardAssignments.map((a) => (
+              <span
+                key={a.assignment_id}
+                title={a.email}
+                className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full border ${
+                  card.is_completed
+                    ? 'bg-slate-100 text-slate-500 border-slate-200'
+                    : 'bg-sky-50 text-sky-700 border-sky-200'
+                }`}
+              >
+                <span>{roleEmoji(a.role)}</span>
+                <span>{shortEmail(a.email)}</span>
+              </span>
+            ))}
           </div>
         )}
 
