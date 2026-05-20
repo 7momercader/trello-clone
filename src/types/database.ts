@@ -67,6 +67,10 @@ export interface Card {
   created_by: string
   created_at: string
   updated_at: string
+  // 🆕 Campos de completado
+  is_completed: boolean
+  completed_at: string | null
+  completed_by: string | null
 }
 
 // ============================================
@@ -99,7 +103,6 @@ export interface AssignmentActionResult {
 // Comments (comentarios en tarjetas)
 // ============================================
 
-// Fila base de la tabla comments
 export interface Comment {
   id: string
   card_id: string
@@ -109,7 +112,6 @@ export interface Comment {
   updated_at: string
 }
 
-// Comentario con email/rol del autor (lo devuelve get_card_comments)
 export interface CommentWithAuthor {
   comment_id: string
   user_id: string
@@ -120,11 +122,19 @@ export interface CommentWithAuthor {
   updated_at: string
 }
 
-// Respuesta estándar de las RPC add/delete comment
 export interface CommentActionResult {
   success: boolean
   message: string
   comment_id?: string
+}
+
+// ============================================
+// Card Completion (marcar como completada)
+// ============================================
+
+export interface CompletionActionResult {
+  success: boolean
+  message: string
 }
 
 // Tipos para inserts (sin id, created_at, updated_at — los pone la DB)

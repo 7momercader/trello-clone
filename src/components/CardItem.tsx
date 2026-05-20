@@ -9,12 +9,31 @@ interface Props {
   card: Card
 }
 
+// Tiempo relativo simple para mostrar "hace X"
+function timeAgo(isoString: string): string {
+  const date = new Date(isoString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHr = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHr / 24)
+
+  if (diffSec < 30) return 'recién'
+  if (diffMin < 1) return `hace ${diffSec} seg`
+  if (diffHr < 1) return `hace ${diffMin} min`
+  if (diffDay < 1) return `hace ${diffHr} h`
+  if (diffDay < 7) return `hace ${diffDay} d`
+  return date.toLocaleDateString('es-AR')
+}
+
 export default function CardItem({ card }: Props) {
-  const { deleteCard } = useBoardDetail()
+  const { deleteCard, toggleCardCompleted } = useBoardDetail()
   const [isEditing, setIsEditing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [togglingCompleted, setTogglingCompleted] = useState(false)
 
-  // 🆕 Hook de @dnd-kit que hace que la card sea arrastrable
+  // Hook de @dnd-kit que hace que la card sea arrastrable
   const {
     attributes,
     listeners,
@@ -30,7 +49,6 @@ export default function CardItem({ card }: Props) {
     },
   })
 
-  // 🆕 Estilos dinámicos: aplicar la transformación que calcula @dnd-kit
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -48,6 +66,15 @@ export default function CardItem({ card }: Props) {
     await deleteCard(card.id)
   }
 
+  const handleToggleCompleted = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (togglingCompleted) return
+
+    setTogglingCompleted(true)
+    await toggleCardCompleted(card.id, !card.is_completed)
+    setTogglingCompleted(false)
+  }
+
   const dueDateFormatted = card.due_date
     ? new Date(card.due_date).toLocaleDateString('es-AR', {
         day: '2-digit',
@@ -59,6 +86,15 @@ export default function CardItem({ card }: Props) {
     ? new Date(card.due_date) < new Date()
     : false
 
+  // Estilos condicionales según el estado de completado
+  const cardBgClass = card.is_completed
+    ? 'bg-emerald-50 ring-1 ring-emerald-300/40'
+    : 'bg-white'
+
+  const titleClass = card.is_completed
+    ? 'text-sm text-slate-500 line-through flex-1 break-words'
+    : 'text-sm text-slate-800 flex-1 break-words'
+
   return (
     <>
       <div
@@ -67,12 +103,29 @@ export default function CardItem({ card }: Props) {
         {...attributes}
         {...listeners}
         onClick={() => setIsEditing(true)}
-        className="bg-white rounded-md shadow-sm p-2.5 cursor-grab active:cursor-grabbing hover:shadow-md hover:ring-2 hover:ring-blue-400 transition group"
+        className={`${cardBgClass} rounded-md shadow-sm p-2.5 cursor-grab active:cursor-grabbing hover:shadow-md hover:ring-2 hover:ring-blue-400 transition group`}
       >
         <div className="flex justify-between items-start gap-2">
-          <p className="text-sm text-slate-800 flex-1 break-words">
+          {/* Checkbox circular para marcar/desmarcar como completada */}
+          <button
+            type="button"
+            onClick={handleToggleCompleted}
+            onPointerDown={(e) => e.stopPropagation()}
+            disabled={togglingCompleted}
+            title={card.is_completed ? 'Desmarcar como completada' : 'Marcar como completada'}
+            className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center text-xs flex-shrink-0 transition ${
+              card.is_completed
+                ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600'
+                : 'border-slate-400 text-transparent hover:border-emerald-500 hover:text-emerald-500'
+            } ${togglingCompleted ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+          >
+            ✓
+          </button>
+
+          <p className={titleClass}>
             {card.title}
           </p>
+
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -86,7 +139,9 @@ export default function CardItem({ card }: Props) {
 
         {/* Descripción acortada */}
         {card.description && (
-          <p className="text-xs text-slate-500 mt-1 line-clamp-2">
+          <p className={`text-xs mt-1 line-clamp-2 ${
+            card.is_completed ? 'text-slate-400 line-through' : 'text-slate-500'
+          }`}>
             {card.description}
           </p>
         )}
@@ -96,13 +151,23 @@ export default function CardItem({ card }: Props) {
           <div className="mt-2">
             <span
               className={`inline-block text-xs px-2 py-0.5 rounded ${
-                isOverdue
-                  ? 'bg-red-100 text-red-700'
-                  : 'bg-slate-200 text-slate-700'
+                card.is_completed
+                  ? 'bg-slate-100 text-slate-500'
+                  : isOverdue
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-slate-200 text-slate-700'
               }`}
             >
               📅 {dueDateFormatted}
             </span>
+          </div>
+        )}
+
+        {/* Sello de "Completada hace X" */}
+        {card.is_completed && card.completed_at && (
+          <div className="mt-2 text-xs text-emerald-600 font-medium flex items-center gap-1">
+            <span>✓</span>
+            <span>Completada {timeAgo(card.completed_at)}</span>
           </div>
         )}
       </div>

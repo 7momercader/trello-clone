@@ -16,6 +16,7 @@ import type {
   AssignmentActionResult,
   CommentWithAuthor,
   CommentActionResult,
+  CompletionActionResult,
 } from '../types/database'
 
 interface BoardDetailContextType {
@@ -41,6 +42,7 @@ interface BoardDetailContextType {
     newListId: string,
     newPosition: number
   ) => Promise<{ error: Error | null }>
+  toggleCardCompleted: (cardId: string, mark: boolean) => Promise<CompletionActionResult>
   fetchCardAssignments: (cardId: string) => Promise<void>
   assignMemberToCard: (cardId: string, userId: string) => Promise<AssignmentActionResult>
   unassignMemberFromCard: (cardId: string, userId: string) => Promise<AssignmentActionResult>
@@ -182,7 +184,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
     }
   }, [fetchLists])
 
-  // Realtime: lists, cards, card_assignments, comments
   useEffect(() => {
     if (!boardId || !user) return
 
@@ -211,7 +212,6 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
           fetchLists()
         }
       )
-
       .on(
         'postgres_changes',
         {
@@ -432,6 +432,51 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
   }
 
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // Toggle completed (marcar/desmarcar tarjeta)
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  const toggleCardCompleted = useCallback(
+    async (cardId: string, mark: boolean): Promise<CompletionActionResult> => {
+      try {
+        const { data, error: rpcError } = await supabase.rpc('toggle_card_completed', {
+          target_card_id: cardId,
+          mark: mark,
+        })
+
+        if (rpcError) throw rpcError
+
+        const result = data as CompletionActionResult
+
+        // Optimistic update local: actualizamos la card sin esperar al refetch
+        if (result.success) {
+          setLists((prev) =>
+            prev.map((l) => ({
+              ...l,
+              cards: l.cards.map((c) =>
+                c.id === cardId
+                  ? {
+                      ...c,
+                      is_completed: mark,
+                      completed_at: mark ? new Date().toISOString() : null,
+                      completed_by: mark ? user?.id ?? null : null,
+                    }
+                  : c
+              ),
+            }))
+          )
+        }
+
+        return result
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Error al cambiar estado de la tarjeta'
+        console.error('toggleCardCompleted error:', err)
+        return { success: false, message }
+      }
+    },
+    [user?.id]
+  )
+
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   // Asignaciones de miembros a cards
   // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -595,6 +640,7 @@ export function BoardDetailProvider({ children, boardId }: BoardDetailProviderPr
         updateCard,
         deleteCard,
         moveCard,
+        toggleCardCompleted,
         fetchCardAssignments,
         assignMemberToCard,
         unassignMemberFromCard,
