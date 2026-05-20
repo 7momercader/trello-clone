@@ -27,15 +27,12 @@ function timeAgo(isoString: string): string {
   return date.toLocaleDateString('es-AR')
 }
 
-// Emoji según el rol del miembro
 function roleEmoji(role: WorkspaceRole): string {
   if (role === 'owner') return '👑'
   if (role === 'admin') return '🛡️'
   return '👤'
 }
 
-// Acorta un email para mostrar como chip
-// "juan.perez@levanohome.pe" → "juan.perez"
 function shortEmail(email: string): string {
   const atIndex = email.indexOf('@')
   if (atIndex === -1) return email
@@ -50,7 +47,6 @@ export default function CardItem({ card }: Props) {
   const [deleting, setDeleting] = useState(false)
   const [togglingCompleted, setTogglingCompleted] = useState(false)
 
-  // Asignaciones de esta card específica
   const cardAssignments = assignmentsByCardId[card.id] ?? []
 
   const {
@@ -121,7 +117,7 @@ export default function CardItem({ card }: Props) {
         {...attributes}
         {...listeners}
         onClick={() => setIsEditing(true)}
-        className={`${cardBgClass} rounded-md shadow-sm p-2.5 cursor-grab active:cursor-grabbing hover:shadow-md hover:ring-2 hover:ring-blue-400 transition group`}
+        className={`${cardBgClass} rounded-md shadow-sm p-3 cursor-grab active:cursor-grabbing hover:shadow-md hover:ring-2 hover:ring-blue-400 transition group`}
       >
         <div className="flex justify-between items-start gap-2">
           {/* Checkbox circular para marcar/desmarcar como completada */}
@@ -131,7 +127,7 @@ export default function CardItem({ card }: Props) {
             onPointerDown={(e) => e.stopPropagation()}
             disabled={togglingCompleted}
             title={card.is_completed ? 'Desmarcar como completada' : 'Marcar como completada'}
-            className={`mt-0.5 w-4 h-4 rounded-full border flex items-center justify-center text-xs flex-shrink-0 transition ${
+            className={`mt-0.5 w-5 h-5 rounded-full border flex items-center justify-center text-xs flex-shrink-0 transition ${
               card.is_completed
                 ? 'bg-emerald-500 border-emerald-500 text-white hover:bg-emerald-600'
                 : 'border-slate-400 text-transparent hover:border-emerald-500 hover:text-emerald-500'
@@ -144,11 +140,12 @@ export default function CardItem({ card }: Props) {
             {card.title}
           </p>
 
+          {/* Botón eliminar — siempre visible en mobile, solo en hover en desktop */}
           <button
             onClick={handleDelete}
             disabled={deleting}
             onPointerDown={(e) => e.stopPropagation()}
-            className="text-slate-400 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition disabled:opacity-50 flex-shrink-0"
+            className="text-slate-400 hover:text-red-500 text-base sm:text-xs opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition disabled:opacity-50 flex-shrink-0 p-1 -m-1"
             title="Eliminar tarjeta"
           >
             {deleting ? '...' : '🗑'}
